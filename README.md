@@ -2,7 +2,7 @@
 
 Per-nucleotide plant genome annotation by fine-tuning the
 smORFeus bidirectional Mamba backbone
-(Caduceus architecture) on 7-label genomic annotations across 8+ plant species.
+(Caduceus architecture) on 7-label genomic annotations.
 
 ## Labels predicted
 
@@ -18,31 +18,28 @@ smORFeus bidirectional Mamba backbone
 
 ## Architecture
 
-The backbone is a locally modified Caduceus model (`caduceus/`) with:
+The backbone is a modified Caduceus model (`caduceus/`) with:
 - Bidirectional Mamba blocks (forward + reverse-complement streams)
 - Optional reverse-complement parameter sharing (RCPS)
 - Frame-positional encoding (modulo-3 reading-frame embeddings)
-- ConvSmoothingDecoder with per-label Gaussian smoothing kernels
+- Per-label Gaussian smoothing kernels
 
-The model is loaded from a pretrained smORFeus checkpoint and fine-tuned
-end-to-end with binary cross-entropy loss plus an optional continuity
-regularisation term.
+The model is loaded from a pretrained smORFeus checkpoint 
 
 ## Installation
 
 ```bash
 # 1. Clone
-git clone https://github.com/<your-org>/Plant_smORFeus.git
+git clone https://github.com/Suraj-S23/Plant_smORFeus.git
 cd Plant_smORFeus
 
 # 2. Create conda environment
 conda env create -f environment.yml
-conda activate plant_smorfeues
+conda activate plant_smorfeus
 
 # 3. Install mamba_ssm from source (requires CUDA GPU)
 pip install causal-conv1d
 pip install mamba-ssm
-# See: https://github.com/state-spaces/mamba
 ```
 
 ## Data pipeline
@@ -79,9 +76,10 @@ across consecutive chunks.
 # Quick development run (small model, 3 epochs)
 python plant_train.py --config dev
 
-# Full training with the base config (Run E values)
+# Full training with the base config 
 python plant_train.py --config configs/base_config.yaml
 
+#TODO
 # Load a pretrained smORFeus checkpoint
 python plant_train.py \
     --config configs/base_config.yaml \
@@ -99,9 +97,6 @@ python plant_eval.py \
     --data_path  plant_finetune/plant_data.hdf5 \
     --outdir     evaluation/
 ```
-
-Produces ROC curves, precision-recall curves, confusion matrices, and
-genomic overlay panels per label.
 
 ## Inference
 
@@ -146,12 +141,9 @@ Plant_smORFeus/
 ├── plant_train.py             # Training loop (PlantTrainer)
 ├── plant_eval.py              # Evaluation callback and standalone eval
 ├── plant_inference.py         # Genome-wide inference
-├── plot_figures.py            # Publication figure generation
 ├── prepare_data.py            # FASTA + GFF3 -> NPZ
 ├── run_prepare_data.py        # Batch prepare_data.py driver
 ├── convert_plant_npz_to_hdf5.py  # NPZ -> HDF5 converter
-├── data_statistics.py         # Dataset statistics
-├── plot_data_statistics.py    # Statistics figures
 ├── requirements.txt
 ├── environment.yml
 ├── CONTRIBUTING.md
