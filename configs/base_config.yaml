@@ -1,0 +1,175 @@
+# base_config.yaml
+# Baseline configuration for Plant_smORFeus fine-tuning.
+# All fields correspond to PlantConfig dataclass attributes in plant_config.py.
+# Override individual fields in a derived YAML or via update_from_dict().
+
+# ── Experiment metadata ────────────────────────────────────────────────────────
+
+experiment_name: plant_annotation
+description: "Plant genome annotation with smORFeus backbone"
+tags: []
+seed: 42 # applied to PyTorch, NumPy, and Python random
+
+# ── Task definition ────────────────────────────────────────────────────────────
+
+# Must equal len(label_names) and len(label_weights).
+num_labels: 7
+
+label_names:
+  - protein_coding_gene
+  - five_prime_UTR
+  - three_prime_UTR
+  - exon
+  - intron
+  - splice_donor # rare: ~2 bp per intron — upweighted
+  - splice_acceptor # rare: ~2 bp per intron — upweighted
+
+# Increase for rare or structurally important labels (e.g. splice sites).
+label_weights:
+  - 1.0 # protein_coding_gene
+  - 2.5 # five_prime_UTR
+  - 1.5 # three_prime_UTR
+  - 1.0 # exon
+  - 1.0 # intron
+  - 3.0 # splice_donor
+  - 3.0 # splice_acceptor
+
+# ── Model architecture ─────────────────────────────────────────────────────────
+
+d_model: 256
+n_layer: 8
+vocab_size: 6 # A=0, T=1, C=2, G=3, N=4, PAD=5
+bidirectional: true
+bidirectional_strategy: add # "add" | "gated" | "concat_linear"
+bidirectional_weight_tie: true
+use_frame_positional_encoding: true
+frame_pos_mode: global # "off" | "local" (per-chunk) | "global" (absolute)
+
+# ── Continuity decoder ─────────────────────────────────────────────────────────
+
+use_orf_decoder: true
+decoder_type: conv_smooth # "conv_smooth" | "standard"
+
+# Fallback smoothing width used when smoothing_kernel_sizes length != num_labels.
+smoothing_kernel_size: 31
+
+# Larger values for broad features (genes, introns); smaller for sharp splice sites.
+smoothing_kernel_sizes:
+  - 31 # protein_coding_gene  — spans thousands of bp
+  - 15 # five_prime_UTR       — ~100–500 bp
+  - 15 # three_prime_UTR      — ~100–500 bp
+  - 21 # exon                 — ~150 bp median
+  - 31 # intron               — 100 bp to 10 kb+
+  - 3 # splice_donor         — 2 bp (GT dinucleotide)
+  - 3 # splice_acceptor      — 2 bp (AG dinucleotide)
+
+decoder_hidden_dim: null # null = use d_model
+
+# ── Training hyperparameters ───────────────────────────────────────────────────
+
+# The decoder head uses 2x this learning rate.
+learning_rate: 0.0002
+batch_size: 4
+max_epochs: 6
+warmup_epochs: 2
+cosine_t_max: null # null = max_epochs - warmup_epochs
+use_scheduler: true
+scheduler_type: warmup_cosine # "warmup_cosine" | ReduceLROnPlateau
+
+# ── Optimiser ──────────────────────────────────────────────────────────────────
+
+optimizer_type: adamw
+weight_decay: 0.01
+betas: [0.9, 0.999]
+eps: 1.0e-8
+gradient_clip_val: 0.5
+# Effective batch size = batch_size * accumulate_grad_batches.
+accumulate_grad_batches: 4
+
+# ── Loss configuration ─────────────────────────────────────────────────────────
+
+continuity_weight: 0.5
+transition_penalty_type: smooth_l1
+continuity_warmup_epochs: 3
+max_continuity_weight: 1.0
+continuity_ramp_epochs: 2
+
+# ── Class-imbalance handling ───────────────────────────────────────────────────
+
+# Disabled by default
+use_dynamic_weights: false
+weight_ema_beta: 0.95
+min_class_weight: 0.1
+max_class_weight: 10.0
+
+# ── Paths ──────────────────────────────────────────────────────────────────────
+
+# Retained for checkpoint backward compatibility; caduceus/ is now self-contained.
+caduceus_path: caduceus
+pretrained_checkpoint: null # null = train from random initialisation
+
+# ── Data configuration ─────────────────────────────────────────────────────────
+
+data_path: plant_finetune/plant_data.hdf5
+chunk_size: 10000
+overlap: 0
+max_sequences: null # null = use all sequences
+# These fractions apply only when organism_split=false.
+test_size: 0.15
+val_size: 0.15
+num_workers: 4
+rc_prob: 0.0
+
+# ── Data filtering ─────────────────────────────────────────────────────────────
+
+min_chunks_per_seq: 5
+skip_validation: true # skip HDF5 integrity check for faster startup
+max_active_sequences: 8
+# organism_split=true prevents species leakage across train/val/test.
+organism_split: true
+
+# ── Caching ────────────────────────────────────────────────────────────────────
+
+# Requires mamba_ssm installed with CUDA support.
+use_hidden_cache: true
+max_cache_size: 1000 # LRU eviction
+
+# ── Logging ────────────────────────────────────────────────────────────────────
+
+project_name: plant-annotation
+log_every_steps: 100
+detailed_logging: true
+save_top_k: 3
+patience: 10
+check_val_every_n_epoch: 1
+
+# ── Directories ────────────────────────────────────────────────────────────────
+
+experiment_dir: experiments
+checkpoint_dir: checkpoints
+evaluation_save_dir: evaluation
+max_eval_batches: 50 # set to a small integer for quick debugging
+
+# ── System ─────────────────────────────────────────────────────────────────────
+
+precision: 16-mixed
+devices: auto
+accelerator: auto
+strategy: auto
+enable_progress_bar: true
+
+# ── SLURM cluster settings ─────────────────────────────────────────────────────
+
+slurm_partition: gpu
+slurm_time: "08:00:00"
+slurm_mem: 64G
+slurm_cpus_per_task: 8
+slurm_gpus: 1
+slurm_job_name: plant_annot
+
+# ── Fine-tuning control ────────────────────────────────────────────────────────
+
+freeze_backbone_epochs: 0 # 0 = fine-tune everything from the first step
+resume_checkpoint: null
+test_only: false
+test_checkpoint: null

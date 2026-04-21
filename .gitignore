@@ -1,0 +1,99 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.conda/
+
+# ── Jupyter ────────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Data files ────────────────────────────────────────────────────────────────
+# Raw genomic data
+plant_data/
+*.fasta
+*.fasta.gz
+*.fa
+*.fa.gz
+*.fna
+*.fna.gz
+*.gff3
+*.gff
+*.gff3.gz
+*.gff.gz
+
+# Processed intermediate data
+plant_processed_data_np/
+*.npz
+
+# HDF5 datasets
+*.hdf5
+*.h5
+
+# gffutils databases
+*.db
+
+# ── Model checkpoints ─────────────────────────────────────────────────────────
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+lightning_logs/
+
+# ── Experiment outputs ────────────────────────────────────────────────────────
+experiments/
+evaluation/
+figures/
+figures_final/
+plant_eval_figures/
+inference_out/
+training_metadata/
+*.tsv
+*.pdf
+*.png
+
+# ── Analysis Scripts ────────────────────────────────────────────────────────
+data_statistics.py
+plot_data_statistics.py
+plot_figures.py
+
+# Saved numpy evaluation arrays
+evaluation_runA/
+**/arrays/*.npy
+**/arrays/*.npz
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+wandb/
+
+# ── IDE / OS ──────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Claude agent memory (project-local) ───────────────────────────────────────
+.claude/
+
+# ── Internal development prompts ──────────────────────────────────────────────
+init/
+
+# ── Personal analysis scripts (not needed to run experiments) ─────────────────
+data_statistics.py
+plot_data_statistics.py
+plot_figures.py
