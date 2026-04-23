@@ -689,6 +689,10 @@ class PlantTrainer(LightningModule):
 def train(config: PlantConfig) -> str:
     """Run training; returns the best checkpoint path."""
     from plant_eval import PlantEvalCallback
+    from pytorch_lightning import seed_everything
+
+    # Seed Python, NumPy, and PyTorch (plus CUDA) for reproducibility.
+    seed_everything(config.seed, workers=True)
 
     dm = PlantDataModule(
         data_path=config.data_path,

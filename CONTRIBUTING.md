@@ -11,7 +11,7 @@ cd Plant_smORFeus
 
 # 2. Create and activate the conda environment
 conda env create -f environment.yml
-conda activate plant_smorfeues
+conda activate plant_smorfeus
 
 # 3. Install mamba_ssm from source (requires a CUDA-capable GPU)
 pip install causal-conv1d
@@ -66,20 +66,12 @@ By default, unrecognised species are placed in the training split; to assign
 them to val or test, add them to `FIXED_VAL` or `FIXED_TEST` inside
 `setup()`.
 
-### 5. Update data statistics
-
-```bash
-python data_statistics.py \
-    --npz_dir plant_processed_data_np \
-    --json_output data_stats.json
-```
-
 ## Running experiments
 
 ### Quick development run
 
 ```bash
-python plant_train.py --config dev
+python plant_train.py --preset dev
 ```
 
 ### Full training run
@@ -90,9 +82,14 @@ python plant_train.py --config configs/base_config.yaml
 
 ### Overriding specific parameters
 
+Only flags defined in `plant_train.py`'s argument parser can be overridden
+at the CLI (`--batch_size`, `--max_epochs`, `--data_path`, `--checkpoint`,
+`--resume_checkpoint`, `--test_only`, `--test_checkpoint`). For all other
+fields, edit the YAML config or a preset in `plant_config.py`.
+
 ```bash
 python plant_train.py --config configs/base_config.yaml \
-    --learning_rate 1e-4 --max_epochs 10
+    --batch_size 2 --max_epochs 10
 ```
 
 ## Evaluation and inference

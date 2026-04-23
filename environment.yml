@@ -1,4 +1,4 @@
-name: plant_smorfeues
+name: plant_smorfeus
 channels:
   - pytorch
   - nvidia
@@ -39,7 +39,7 @@ dependencies:
     # mamba_ssm MUST be installed from source after activating this environment.
     # Run the following commands after `conda env create -f environment.yml`:
     #
-    #   conda activate plant_smorfeues
+    #   conda activate plant_smorfeus
     #   pip install causal-conv1d
     #   pip install mamba-ssm
     #

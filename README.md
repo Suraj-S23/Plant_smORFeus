@@ -6,25 +6,29 @@ smORFeus bidirectional Mamba backbone
 
 ## Labels predicted
 
-| Index | Label | Description |
-|-------|-------|-------------|
-| 0 | `protein_coding_gene` | Entire gene body (TSS to TES) |
-| 1 | `five_prime_UTR` | 5' untranslated region |
-| 2 | `three_prime_UTR` | 3' untranslated region |
-| 3 | `exon` | Exonic sequence |
-| 4 | `intron` | Intronic sequence (derived from exon pairs) |
-| 5 | `splice_donor` | 2 bp GT dinucleotide at intron start |
-| 6 | `splice_acceptor` | 2 bp AG dinucleotide at intron end |
+| Index | Label                 | Description                                 |
+| ----- | --------------------- | ------------------------------------------- |
+| 0     | `protein_coding_gene` | Entire gene body (TSS to TES)               |
+| 1     | `five_prime_UTR`      | 5' untranslated region                      |
+| 2     | `three_prime_UTR`     | 3' untranslated region                      |
+| 3     | `exon`                | Exonic sequence                             |
+| 4     | `intron`              | Intronic sequence (derived from exon pairs) |
+| 5     | `splice_donor`        | 2 bp GT dinucleotide at intron start        |
+| 6     | `splice_acceptor`     | 2 bp AG dinucleotide at intron end          |
 
 ## Architecture
 
 The backbone is a modified Caduceus model (`caduceus/`) with:
+
 - Bidirectional Mamba blocks (forward + reverse-complement streams)
 - Optional reverse-complement parameter sharing (RCPS)
 - Frame-positional encoding (modulo-3 reading-frame embeddings)
 - Per-label Gaussian smoothing kernels
 
-The model is loaded from a pretrained smORFeus checkpoint 
+The model is initialised from a pretrained smORFeus checkpoint and then
+fine-tuned on the 7-label plant annotation task. The pretrained backbone
+and fine-tuned checkpoints are hosted separately (see
+[Checkpoints](#checkpoints) below).
 
 ## Installation
 
@@ -41,6 +45,10 @@ conda activate plant_smorfeus
 pip install causal-conv1d
 pip install mamba-ssm
 ```
+
+See https://github.com/state-spaces/mamba for full mamba_ssm build
+instructions. A CUDA-capable GPU is required to run training, evaluation,
+or inference; CPU-only execution is not supported.
 
 ## Data pipeline
 
@@ -73,21 +81,21 @@ across consecutive chunks.
 ## Training
 
 ```bash
-# Quick development run (small model, 3 epochs)
-python plant_train.py --config dev
+# Quick development run (small model, 3 epochs) — uses the built-in 'dev' preset
+python plant_train.py --preset dev
 
-# Full training with the base config 
+# Full training with the base config
 python plant_train.py --config configs/base_config.yaml
 
-#TODO
-# Load a pretrained smORFeus checkpoint
+# Load a pretrained smORFeus backbone checkpoint and fine-tune
 python plant_train.py \
     --config configs/base_config.yaml \
-    --pretrained_checkpoint path/to/smorfeus.ckpt
+    --checkpoint path/to/smorfeus.ckpt
 ```
 
 All hyperparameters are documented in `configs/base_config.yaml` and
-`plant_config.py`.
+`plant_config.py`. Common CLI overrides: `--batch_size`, `--max_epochs`,
+`--data_path`, `--resume_checkpoint`, `--test_only`, `--test_checkpoint`.
 
 ## Evaluation
 
@@ -115,6 +123,40 @@ python plant_inference.py \
     --outdir     inference_out/
 ```
 
+## Checkpoints
+
+Pretrained and fine-tuned checkpoints are included in this
+repository because of their size. They are distributed separately and
+should be placed under `checkpoints/` before running evaluation or
+inference:
+
+```
+checkpoints/
+├── smorfeus_pretrained.ckpt   # pretrained backbone (for --checkpoint during training)
+└── best.ckpt                  # fine-tuned plant annotation checkpoint
+```
+
+All scripts accept an explicit `--checkpoint` path, so the checkpoints
+may also live elsewhere on disk.
+
+## Data
+
+The HDF5 training file and per-species NPZ intermediates are likewise
+not committed to the repository. Regenerate them by following the
+[Data pipeline](#data-pipeline) section above. FASTA and GFF3 source
+files can be obtained from Phytozome or Ensembl Plants for the eight
+species registered in `helpers/plant_datamodule.py`.
+
+## Reproducibility
+
+- All random seeds are set from `PlantConfig.seed` (default 42) in
+  PyTorch, NumPy, and Python's `random` module.
+- `configs/base_config.yaml` holds the exact hyperparameters used for
+  the baseline fine-tuning run reported in the accompanying write-up.
+- Species-level splits (`organism_split=true`) are deterministic from
+  the species-to-split mapping in `helpers/plant_datamodule.py`; no
+  random shuffling of species between runs.
+
 ## Adding a new species
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for a step-by-step guide covering
@@ -136,7 +178,7 @@ Plant_smORFeus/
 │   ├── plant_collator.py      # Padded batch collator
 │   └── plant_sampling.py      # SequenceAwareBatchSampler
 ├── configs/
-│   └── base_config.yaml       # Run E hyperparameters (baseline)
+│   └── base_config.yaml       # Baseline hyperparameters
 ├── plant_config.py            # PlantConfig dataclass
 ├── plant_train.py             # Training loop (PlantTrainer)
 ├── plant_eval.py              # Evaluation callback and standalone eval
