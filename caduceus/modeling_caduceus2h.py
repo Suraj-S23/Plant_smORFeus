@@ -22,7 +22,7 @@ from transformers.modeling_outputs import (
 )
 
 # NOTE: mamba_ssm requires a CUDA GPU and must be installed from source
-# — see https://github.com/state-spaces/mamba
+# - see https://github.com/state-spaces/mamba
 try:
     from mamba_ssm.modules.mamba_simple import Mamba
 except ImportError as e:
@@ -128,7 +128,7 @@ class BiMambaWrapper(nn.Module):
         self.bidirectional = bidirectional
         self.bidirectional_strategy = bidirectional_strategy
 
-        # Complement LUT (non-persistent — rebuilt from config)
+        # Complement LUT (non-persistent; rebuilt from config)
         self.register_buffer(
             "complement_lut",
             torch.full((vocab_size,), 5, dtype=torch.long),

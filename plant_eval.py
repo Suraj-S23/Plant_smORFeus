@@ -31,13 +31,13 @@ mpl.rcParams["text.usetex"] = False
 
 # Colour palette, one colour per label (7 total)
 _LABEL_COLOURS = [
-    "#4e79a7",  # protein_coding_gene  — blue
-    "#f28e2b",  # five_prime_UTR       — orange
-    "#e15759",  # three_prime_UTR      — red
-    "#76b7b2",  # exon                 — teal
-    "#59a14f",  # intron               — green
-    "#edc948",  # splice_donor         — yellow
-    "#b07aa1",  # splice_acceptor      — purple
+    "#4e79a7",  # protein_coding_gene  - blue
+    "#f28e2b",  # five_prime_UTR       - orange
+    "#e15759",  # three_prime_UTR      - red
+    "#76b7b2",  # exon                 - teal
+    "#59a14f",  # intron               - green
+    "#edc948",  # splice_donor         - yellow
+    "#b07aa1",  # splice_acceptor      - purple
 ]
 
 

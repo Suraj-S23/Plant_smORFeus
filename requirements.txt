@@ -1,11 +1,11 @@
-# Plant_smORFeus — Python dependencies
+# Plant_smORFeus: Python dependencies
 #
 # Install order matters:
 #   1. Install PyTorch with CUDA first (see https://pytorch.org/get-started/locally/)
 #   2. Install mamba_ssm from source (requires CUDA-capable GPU)
 #   3. pip install -r requirements.txt
 #
-# mamba_ssm MUST be installed from source — it is NOT available on PyPI:
+# mamba_ssm MUST be installed from source; it is NOT available on PyPI:
 #   pip install mamba-ssm causal-conv1d
 #   (see https://github.com/state-spaces/mamba for full instructions)
 
@@ -39,7 +39,7 @@ matplotlib>=3.7.0
 # ── Config serialisation ──────────────────────────────────────────────────────
 pyyaml>=6.0
 
-# ── mamba_ssm (CUDA GPU required — install from source, not from this file) ───
+# ── mamba_ssm (CUDA GPU required; install from source, not from this file) ────
 # mamba-ssm       # DO NOT install via pip install -r; install from source:
 #                 # https://github.com/state-spaces/mamba
 # causal-conv1d   # required dependency of mamba-ssm

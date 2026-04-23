@@ -210,7 +210,7 @@ class PlantTrainer(LightningModule):
             torch.tensor(config.label_weights, dtype=torch.float32),
         )
 
-        # EMA class-balance buffers — shape [num_labels, 2] (neg, pos counts)
+        # EMA class-balance buffers: shape [num_labels, 2] (neg, pos counts)
         self.register_buffer("label_class_counts_ema", torch.zeros(nl, 2))
         self.register_buffer("label_total_counts_ema", torch.zeros(nl))
 
@@ -240,7 +240,7 @@ class PlantTrainer(LightningModule):
         module = cls(config)
         ckpt_path = config.pretrained_checkpoint
         if not ckpt_path:
-            print("[INIT] No pretrained_checkpoint specified — training from scratch.")
+            print("[INIT] No pretrained_checkpoint specified - training from scratch.")
             return module
 
         print(f"[INIT] Loading smORFeus backbone from: {ckpt_path}")
@@ -256,7 +256,7 @@ class PlantTrainer(LightningModule):
         missing, unexpected = module.model.backbone.load_state_dict(
             backbone_state, strict=False
         )
-        print(f"  Backbone loaded — missing: {len(missing)}, unexpected: {len(unexpected)}")
+        print(f"  Backbone loaded; missing: {len(missing)}, unexpected: {len(unexpected)}")
         if missing:
             print(f"  Missing keys (first 5): {missing[:5]}")
 

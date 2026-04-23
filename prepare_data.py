@@ -39,7 +39,7 @@ def build_gff_db(gff_path):
 
 
 def get_intervals_from_gff(db, feature_type):
-    """{seqid: [(start, end, strand)]} — 0-based half-open."""
+    """{seqid: [(start, end, strand)]}: 0-based half-open."""
     feats = {}
     for f in db.features_of_type(feature_type, order_by="seqid"):
         feats.setdefault(f.seqid, []).append((f.start - 1, f.end, f.strand))

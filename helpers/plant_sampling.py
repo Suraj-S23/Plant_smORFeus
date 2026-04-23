@@ -1,5 +1,5 @@
 """BatchSampler that prevents two chunks from the same sequence sharing a
-batch — required so each sequence keeps its own Mamba SSM state across
+batch; required so each sequence keeps its own Mamba SSM state across
 consecutive chunks."""
 
 import random

@@ -57,13 +57,13 @@ class PlantConfig:
     decoder_type: str = "conv_smooth"
     smoothing_kernel_size: int = 31
     smoothing_kernel_sizes: List[int] = field(default_factory=lambda: [
-        31,  # protein_coding_gene  — spans thousands of bp
-        15,  # five_prime_UTR       — ~100-500 bp
-        15,  # three_prime_UTR      — ~100-500 bp
-        21,  # exon                 — ~150 bp median
-        31,  # intron               — 100 bp to 10 kb+
-        3,   # splice_donor         — 2 bp (GT dinucleotide)
-        3,   # splice_acceptor      — 2 bp (AG dinucleotide)
+        31,  # protein_coding_gene: spans thousands of bp
+        15,  # five_prime_UTR: ~100-500 bp
+        15,  # three_prime_UTR: ~100-500 bp
+        21,  # exon: ~150 bp median
+        31,  # intron: 100 bp to 10 kb+
+        3,   # splice_donor: 2 bp (GT dinucleotide)
+        3,   # splice_acceptor: 2 bp (AG dinucleotide)
     ])
     decoder_hidden_dim: Optional[int] = None
 
@@ -220,7 +220,7 @@ class PlantConfig:
             if hasattr(self, key):
                 setattr(self, key, value)
             else:
-                print(f"Warning: unknown config parameter '{key}' — ignored.")
+                print(f"Warning: unknown config parameter '{key}'; ignored.")
 
 
 # ---------------------------------------------------------------------------

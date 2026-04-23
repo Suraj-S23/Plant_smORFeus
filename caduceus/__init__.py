@@ -1,4 +1,4 @@
-"""Locally modified bidirectional Mamba backbone. Self-contained — not an
+"""Locally modified bidirectional Mamba backbone. Self-contained; not an
 external dependency."""
 
 from .configuration_caduceus import CaduceusConfig

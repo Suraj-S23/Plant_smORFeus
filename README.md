@@ -81,7 +81,7 @@ across consecutive chunks.
 ## Training
 
 ```bash
-# Quick development run (small model, 3 epochs) — uses the built-in 'dev' preset
+# Quick development run (small model, 3 epochs) - uses the built-in 'dev' preset
 python plant_train.py --preset dev
 
 # Full training with the base config
@@ -109,13 +109,13 @@ python plant_eval.py \
 ## Inference
 
 ```bash
-# Inference only — writes GFF3 predictions
+# Inference only - writes GFF3 predictions
 python plant_inference.py \
     --checkpoint checkpoints/best.ckpt \
     --fasta      new_genome.fasta \
     --outdir     inference_out/
 
-# Inference + evaluation — also writes per-label metrics
+# Inference + evaluation - also writes per-label metrics
 python plant_inference.py \
     --checkpoint checkpoints/best.ckpt \
     --fasta      new_genome.fasta \
@@ -199,4 +199,4 @@ this repository.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT; see [LICENSE](LICENSE).

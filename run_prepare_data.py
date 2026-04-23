@@ -1,4 +1,4 @@
-"""Batch runner for prepare_data.py. Pairs FASTA and GFF files by stem —
+"""Batch runner for prepare_data.py. Pairs FASTA and GFF files by stem;
 handles Galaxy-style 'Galaxy2-[name.fasta]' and skips ' (N)' duplicates.
 
 Output → <dataset_root>/<species_stem>/output_labels/<seqid>.npz
@@ -127,7 +127,7 @@ def discover_pairs(fasta_dir: str, gff_dir: str) -> dict:
             if gff_stem not in gffs:
                 missing.append(f"GFF '{gff_stem}'")
             print(f"  [manual] WARNING: Cannot pair {canonical} "
-                  f"— missing {', '.join(missing)}")
+                  f"- missing {', '.join(missing)}")
 
     if only_fa:
         print(f"  FASTA with no matching GFF  ({len(only_fa)}): {only_fa}")
