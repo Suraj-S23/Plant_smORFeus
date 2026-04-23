@@ -1,14 +1,7 @@
-"""HDF5 dataset loader for plant genome annotation.
+"""HDF5 dataset loader. One file handle per DataLoader worker; O(1) adjacent-chunk lookup.
 
-Provides GenomicHDF5Dataset, a memory-efficient PyTorch Dataset that opens a
-single HDF5 file handle per DataLoader worker and supports O(1) lookup of
-adjacent chunks for hidden-state caching.
-
-Compatible with both the original 3-label smORFeus HDF5 files and the new
-7-label plant annotation HDF5 files produced by convert_plant_npz_to_hdf5.py.
-
-Classes exposed:
-    GenomicHDF5Dataset -- Per-chunk genomic sequence and label loader.
+Handles both the original 3-label smORFeus HDF5 and the 7-label plant HDF5
+produced by convert_plant_npz_to_hdf5.py.
 """
 
 import h5py
@@ -20,19 +13,19 @@ from torch.utils.data import Dataset
 
 
 class GenomicHDF5Dataset(Dataset):
-    """Memory-efficient HDF5 chunk loader with O(1) adjacency index for hidden-state caching."""
+    """HDF5 chunk loader with adjacency index for hidden-state caching."""
 
     def __init__(self, hdf5_path: str, overlap: int = 500, length_bins=None):
         self.hdf5_path = hdf5_path
-        self.overlap   = overlap
-        self._h5       = None
+        self.overlap = overlap
+        self._h5 = None
         self._worker_id = None
 
         self.length_bins = length_bins or [(0, float("inf"), 1.0)]
         self.use_length_weighting = len(self.length_bins) > 1
 
-        self.all_chunks   = []
-        self.chunk_index  = {}
+        self.all_chunks = []
+        self.chunk_index = {}
         self.previous_chunk_map = {}
         self.sequence_map = defaultdict(list)
 
@@ -66,11 +59,11 @@ class GenomicHDF5Dataset(Dataset):
         if self._h5 is None:
             self._h5 = h5py.File(self.hdf5_path, "r")
 
-        seq_id, chunk_id   = self.all_chunks[idx]
-        prev_chunk_id      = self.previous_chunk_map.get((seq_id, chunk_id), "")
-        group              = self._h5[seq_id][chunk_id]
+        seq_id, chunk_id = self.all_chunks[idx]
+        prev_chunk_id = self.previous_chunk_map.get((seq_id, chunk_id), "")
+        group = self._h5[seq_id][chunk_id]
 
-        # Decode sequence bytes, handles both S1 arrays and raw byte objects
+        # S1 arrays vs raw bytes
         seq_data = group["sequence"][:]
         if seq_data.dtype.kind == "S":
             cur_seq = b"".join(seq_data).decode("utf-8")
@@ -98,7 +91,7 @@ class GenomicHDF5Dataset(Dataset):
             full_seq = cur_seq
 
         if "frame_targets" in group:
-            frame_targets  = group["frame_targets"][:]          # (L, N)
+            frame_targets = group["frame_targets"][:]  # (L, N)
             length_weights = self._compute_length_weights(frame_targets)
 
             overlap_count = None
@@ -106,23 +99,23 @@ class GenomicHDF5Dataset(Dataset):
                 overlap_count = group["target"][:, 1]
 
             return {
-                "sequence":          full_seq,
-                "target":            frame_targets,
-                "length_weights":    length_weights,
-                "chunk_id":          chunk_id,
-                "overlap_count":     overlap_count,
-                "sequence_id":       seq_id,
+                "sequence": full_seq,
+                "target": frame_targets,
+                "length_weights": length_weights,
+                "chunk_id": chunk_id,
+                "overlap_count": overlap_count,
+                "sequence_id": seq_id,
                 "previous_chunk_id": prev_chunk_id,
             }
 
-        # Legacy 2-channel fallback for original smORFeus HDF5 files
-        target        = group["target"][:]
-        orf_presence  = target[:, 0]
+        # Legacy 2-channel smORFeus HDF5 fallback
+        target = group["target"][:]
+        orf_presence = target[:, 0]
         return {
-            "sequence":          full_seq,
-            "target":            orf_presence.reshape(-1, 1),
-            "chunk_id":          chunk_id,
-            "sequence_id":       seq_id,
+            "sequence": full_seq,
+            "target": orf_presence.reshape(-1, 1),
+            "chunk_id": chunk_id,
+            "sequence_id": seq_id,
             "previous_chunk_id": prev_chunk_id,
             "orf_indices": {
                 "non_orf": np.where(target[:, 1] == 0)[0],
@@ -137,7 +130,7 @@ class GenomicHDF5Dataset(Dataset):
         adj_num = cur_num + direction
         if adj_num < 0:
             return None
-        adj_id  = f"{seq_id}_chunk_{adj_num:05d}"
+        adj_id = f"{seq_id}_chunk_{adj_num:05d}"
         adj_idx = self.chunk_index.get((seq_id, adj_id))
         if adj_idx is None:
             return None
@@ -155,8 +148,8 @@ class GenomicHDF5Dataset(Dataset):
         return 1.0
 
     def _extract_orf_runs(self, sequence: np.ndarray) -> list:
-        runs   = []
-        start  = None
+        runs = []
+        start = None
         for i, val in enumerate(sequence):
             if val == 1 and start is None:
                 start = i

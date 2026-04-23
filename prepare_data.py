@@ -1,22 +1,10 @@
-"""Per-genome label preparation from FASTA and GFF3 inputs.
+"""FASTA + GFF3 → per-chromosome NPZ (sequence string + (L, 7) uint8 labels).
 
-For each chromosome in a FASTA file, this script reads genomic feature
-annotations from a GFF3 file and writes one compressed NPZ file containing
-the nucleotide sequence string and a binary label array of shape (L, 7).
+Label order: protein_coding_gene, five_prime_UTR, three_prime_UTR, exon,
+intron, splice_donor, splice_acceptor. The last three are derived from
+mRNA exon pairs (2 bp donor/acceptor at intron boundaries).
 
-Labels produced (in order):
-    0  protein_coding_gene
-    1  five_prime_UTR
-    2  three_prime_UTR
-    3  exon
-    4  intron         (derived from mRNA exon pairs)
-    5  splice_donor   (derived: 2 bp at each intron start)
-    6  splice_acceptor (derived: 2 bp at each intron end)
-
-Output NPZ format consumed by convert_plant_npz_to_hdf5.py:
-    sequence: str  -- full chromosome sequence (uppercase)
-    labels:   ndarray (L, 7), dtype uint8
-"""
+Output is consumed by convert_plant_npz_to_hdf5.py."""
 
 import argparse
 import os
@@ -30,7 +18,7 @@ LABELS = ["protein_coding_gene", "five_prime_UTR", "three_prime_UTR",
 
 
 def build_gff_db(gff_path):
-    """Load or build a gffutils FeatureDB; caches as gff_path + ".db"."""
+    """Load or (re)build a gffutils FeatureDB cached at gff_path + ".db"."""
     db_path = gff_path + ".db"
     if os.path.exists(db_path):
         try:
@@ -51,7 +39,7 @@ def build_gff_db(gff_path):
 
 
 def get_intervals_from_gff(db, feature_type):
-    """Return {seqid: [(start, end, strand)]} for one GFF3 feature type (0-based half-open)."""
+    """{seqid: [(start, end, strand)]} — 0-based half-open."""
     feats = {}
     for f in db.features_of_type(feature_type, order_by="seqid"):
         feats.setdefault(f.seqid, []).append((f.start - 1, f.end, f.strand))
@@ -59,7 +47,7 @@ def get_intervals_from_gff(db, feature_type):
 
 
 def compute_introns_and_splice_sites(exon_list):
-    """Derive intron, splice-donor, and splice-acceptor intervals from a sorted exon list."""
+    """Introns, donors, acceptors from a sorted exon list."""
     introns, donors, acceptors = [], [], []
     for i in range(len(exon_list) - 1):
         s1, e1, strand = exon_list[i]
@@ -75,7 +63,7 @@ def compute_introns_and_splice_sites(exon_list):
 
 
 def label_chromosome(record, feature_dict):
-    """Build a uint8 label array of shape (L, 7) from a BioPython SeqRecord."""
+    """(L, 7) uint8 label array for a BioPython SeqRecord."""
     L = len(record.seq)
     y = np.zeros((L, len(LABELS)), dtype=np.uint8)
     for i, label in enumerate(LABELS):
@@ -127,13 +115,12 @@ def process_genome(fasta_path, gff_path, output_dir):
 
 
 def main():
-    """Entry point for command-line label preparation."""
     parser = argparse.ArgumentParser(
         description="Prepare per-chromosome NPZ label files from FASTA + GFF3."
     )
-    parser.add_argument("--fasta",      required=True,
+    parser.add_argument("--fasta", required=True,
                         help="Input genome FASTA file")
-    parser.add_argument("--gff",        required=True,
+    parser.add_argument("--gff", required=True,
                         help="Input GFF3 annotation file")
     parser.add_argument("--output_dir", required=True,
                         help="Directory to write per-chromosome NPZ files")

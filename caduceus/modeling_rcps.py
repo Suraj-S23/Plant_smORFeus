@@ -1,16 +1,5 @@
-"""Reverse-complement equivariant (RCPS) wrapper modules for Caduceus.
-
-This module provides the building blocks for reverse-complement parameter
-sharing (RCPS) mode: embeddings, per-module wrappers, add-norm layers, and
-LM heads that treat forward and reverse-complement DNA strands symmetrically.
-
-Classes exposed:
-    RCPSEmbedding       -- RC-equivariant token embedding
-    RCPSWrapper         -- Generic module wrapper for RC equivariance
-    RCPSMambaBlock      -- RC-equivariant Mamba residual block
-    RCPSAddNormWrapper  -- RC-equivariant add-norm layer
-    RCPSLMHead          -- RC-equivariant language-modelling head
-"""
+"""RC-equivariant building blocks: embedding, generic wrapper, Mamba block,
+add-norm wrapper, LM head. Treats forward and RC strands symmetrically."""
 
 from collections import OrderedDict
 from typing import Optional

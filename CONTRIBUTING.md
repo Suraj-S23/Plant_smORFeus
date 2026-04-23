@@ -1,7 +1,6 @@
 # Contributing to Plant_smORFeus
 
-Thank you for your interest in contributing. This document explains how to
-add new species, run experiments, and submit pull requests.
+How to add new species, run experiments, and submit pull requests.
 
 ## Development setup
 

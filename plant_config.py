@@ -1,11 +1,7 @@
-"""Training and data configuration for Plant_smORFeus fine-tuning.
+"""PlantConfig: hyperparameters shared by training, eval, and inference.
 
-This module defines PlantConfig, the single source of truth for all
-hyperparameters used across training (plant_train.py), evaluation
-(plant_eval.py), and inference (plant_inference.py).
-
-It also exposes a small set of named presets (PRESETS) and a load_config()
-helper that resolves either a preset name or a YAML file path.
+Also exposes named presets and a load_config() helper that accepts either a
+preset name or a YAML path.
 """
 
 from dataclasses import dataclass, field
@@ -17,11 +13,7 @@ import yaml
 
 @dataclass
 class PlantConfig:
-    """Configuration for plant genome annotation fine-tuning.
-
-    Directly serialisable to/from YAML via from_yaml() / to_yaml().
-    Load from a preset name or YAML file path via load_config().
-    """
+    """Fine-tuning config. Serialisable via from_yaml()/to_yaml()."""
 
     # === EXPERIMENT METADATA ===
     experiment_name: str = "plant_annotation"
@@ -106,9 +98,7 @@ class PlantConfig:
     max_class_weight: float = 10.0
 
     # === PATHS ===
-    # caduceus_path is kept for checkpoint backward compatibility.
-    # The caduceus/ package is now self-contained and no longer needs a
-    # runtime path injection.
+    # Kept for checkpoint backward compatibility; caduceus/ is self-contained now.
     caduceus_path: str = "caduceus"
     pretrained_checkpoint: Optional[str] = None
 
@@ -169,13 +159,13 @@ class PlantConfig:
 
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "PlantConfig":
-        """Load from a YAML file; missing keys use their defaults."""
+        """Load from YAML; missing keys fall back to defaults."""
         with open(yaml_path) as f:
             data = yaml.safe_load(f)
         return cls(**data)
 
     def to_yaml(self, yaml_path: str) -> None:
-        """Serialise this config to a YAML file. Parent directories must exist."""
+        """Dump to YAML. Parent directory must exist."""
         data = {}
         for key, value in self.__dict__.items():
             data[key] = list(value) if isinstance(value, tuple) else value
@@ -183,7 +173,7 @@ class PlantConfig:
             yaml.dump(data, f, default_flow_style=False)
 
     def get_model_params(self) -> Dict[str, Any]:
-        """Return the subset of config values consumed by CaduceusConfig."""
+        """Subset consumed by CaduceusConfig."""
         return {
             "d_model": self.d_model,
             "n_layer": self.n_layer,
@@ -197,7 +187,7 @@ class PlantConfig:
         }
 
     def validate(self) -> List[str]:
-        """Check the config for inconsistencies; returns a list of issue strings."""
+        """Return a list of config issues (empty if valid)."""
         issues = []
         if self.num_labels != len(self.label_names):
             issues.append(
@@ -225,7 +215,7 @@ class PlantConfig:
         return issues
 
     def update_from_dict(self, updates: Dict[str, Any]) -> None:
-        """Apply a dictionary of overrides in-place. Unknown keys trigger a warning."""
+        """Apply overrides in-place; unknown keys are warned and skipped."""
         for key, value in updates.items():
             if hasattr(self, key):
                 setattr(self, key, value)
@@ -261,7 +251,7 @@ PRESETS = {
 
 
 def load_config(source: str = "default") -> PlantConfig:
-    """Load a PlantConfig from a preset name ("dev", "default", "large") or YAML path."""
+    """Load by preset name ("dev", "default", "large") or YAML path."""
     if source in PRESETS:
         return PRESETS[source]
     elif Path(source).exists():

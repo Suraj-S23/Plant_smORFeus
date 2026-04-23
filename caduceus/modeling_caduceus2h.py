@@ -1,22 +1,10 @@
-"""Caduceus model architecture for per-nucleotide plant genome annotation.
+"""Caduceus bidirectional Mamba backbone + annotation heads.
 
-This module implements the full bidirectional Mamba backbone (CaduceusMixerModel)
-and its downstream classification heads (Caduceus). It also contains the
-helper modules that construct individual Mamba blocks (create_block,
-BiMambaWrapper) and the embedding layer (CaduceusEmbeddings).
+Classes: BiMambaWrapper, CaduceusEmbeddings, CaduceusMixerModel,
+CaduceusPreTrainedModel, Caduceus.
 
-The architecture is used by plant_train.py as the backbone of
-PlantAnnotationModel: it accepts tokenised DNA chunks and returns per-position
-hidden states that are then passed to the convolutional decoder.
-
-Key classes:
-    BiMambaWrapper          -- Forward + RC Mamba with configurable fusion
-    CaduceusEmbeddings      -- Token + optional frame-positional embeddings
-    CaduceusMixerModel      -- Full backbone (embeddings + blocks + norm)
-    CaduceusPreTrainedModel -- HF base class with weight init
-    Caduceus                -- Backbone + annotation heads
-
-NOTE: mamba_ssm requires a CUDA GPU and must be installed from source: see https://github.com/state-spaces/mamba
+mamba_ssm requires a CUDA GPU and a source install:
+https://github.com/state-spaces/mamba
 """
 
 import math
@@ -87,7 +75,7 @@ def create_block(
     dtype=None,
     complement_map: Optional[Dict[int, int]] = None,
 ) -> nn.Module:
-    """Construct a single Mamba residual block (BiMambaWrapper inside Block or RCPSMambaBlock)."""
+    """Build one Mamba residual block (BiMambaWrapper wrapped in Block or RCPSMambaBlock)."""
     if ssm_cfg is None:
         ssm_cfg = {}
     factory = {"device": device, "dtype": dtype}
@@ -140,7 +128,7 @@ class BiMambaWrapper(nn.Module):
         self.bidirectional = bidirectional
         self.bidirectional_strategy = bidirectional_strategy
 
-        # Complement look-up table (persistent=False — reconstructed from config)
+        # Complement LUT (non-persistent — rebuilt from config)
         self.register_buffer(
             "complement_lut",
             torch.full((vocab_size,), 5, dtype=torch.long),
@@ -159,17 +147,14 @@ class BiMambaWrapper(nn.Module):
         if bidirectional and bidirectional_weight_tie:
             self.mamba_rev.load_state_dict(self.mamba_fwd.state_dict())
 
-        # Embedding handles — populated by the backbone via set_embeddings()
+        # Populated by the backbone via set_embeddings()
         self.word_embeddings: Optional[nn.Embedding] = None
         self.frame_embeddings: Optional[nn.Embedding] = None
         self.use_frame_pos: bool = True
 
-        # Fusion modules (only instantiated for the relevant strategy)
         if self.bidirectional and self.bidirectional_strategy == "gated":
-            # Scalar gate per token in [0, 1], computed from [fwd; rev]
             self.fuse_gate = nn.Linear(2 * d_model, 1)
         elif self.bidirectional and self.bidirectional_strategy == "concat_linear":
-            # Concatenate then project back to d_model
             self.fuse_proj = nn.Linear(2 * d_model, d_model)
 
     def set_embeddings(
@@ -178,13 +163,13 @@ class BiMambaWrapper(nn.Module):
         frame_embeddings: Optional[nn.Embedding],
         use_frame_pos: bool,
     ) -> None:
-        """Store embedding references so the RC stream can look them up."""
+        """Share embedding handles with the RC stream."""
         self.word_embeddings = word_embeddings
         self.frame_embeddings = frame_embeddings
         self.use_frame_pos = bool(use_frame_pos)
 
     def _embed_rc(self, rc_ids: torch.Tensor) -> torch.Tensor:
-        """Embed reverse-complement token ids (frame-pos omitted on RC stream)."""
+        """Embed RC tokens (no frame-pos on RC stream)."""
         if self.word_embeddings is None:
             raise RuntimeError(
                 "word_embeddings is not set. Call set_embeddings() before forward()."
@@ -192,7 +177,7 @@ class BiMambaWrapper(nn.Module):
         return self.word_embeddings(rc_ids)
 
     def reverse_complement(self, ids: torch.Tensor) -> torch.Tensor:
-        """Map token ids to their reverse complement via the complement LUT."""
+        """Flip and complement via the LUT."""
         return self.complement_lut[torch.flip(ids, dims=[1])]
 
     def forward(
@@ -227,10 +212,8 @@ class BiMambaWrapper(nn.Module):
 # ---------------------------------------------------------------------------
 
 class CaduceusEmbeddings(nn.Module):
-    """Token embeddings with optional modulo-3 frame-positional encoding.
-
-    frame_pos_mode: "off" (none), "local" (pos % 3), "global" ((phase + pos) % 3).
-    """
+    """Tokens + optional mod-3 frame-pos.
+    frame_pos_mode: "off" | "local" (pos % 3) | "global" ((phase + pos) % 3)."""
 
     def __init__(self, config: CaduceusConfig, **factory):
         super().__init__()
@@ -299,7 +282,6 @@ class CaduceusMixerModel(nn.Module):
         self.residual_in_fp32 = config.residual_in_fp32
 
         self.embeddings = CaduceusEmbeddings(config, **factory)
-        # Propagate the frame-pos mode explicitly so it reflects the config
         self.embeddings.frame_pos_mode = getattr(config, "frame_pos_mode", "global")
 
         self.layers = nn.ModuleList(
@@ -381,11 +363,7 @@ class CaduceusMixerModel(nn.Module):
 # ---------------------------------------------------------------------------
 
 class CaduceusPreTrainedModel(PreTrainedModel):
-    """HuggingFace base class with Caduceus-specific weight initialisation.
-
-    Applies rescaled pre-norm residual initialisation to output projection
-    weights, consistent with the smORFeus pre-training recipe.
-    """
+    """HF base with smORFeus weight init (rescaled pre-norm residual on out projections)."""
 
     config_class = CaduceusConfig
     base_model_prefix = "caduceus"
@@ -393,7 +371,7 @@ class CaduceusPreTrainedModel(PreTrainedModel):
     _no_split_modules = ["BiMambaWrapper"]
 
     def _init_weights(self, module: nn.Module, initializer_range: float = 0.02, **kwargs):
-        """Initialise linear/embedding weights; rescale out_proj and fc2 by 1/sqrt(n_layer)."""
+        """Init weights; rescale out_proj/fc2 by 1/sqrt(n_layer)."""
         n_layer = self.config.n_layer
         initialized_cfg = self.config.initializer_cfg or {}
         rescale_prenorm_residual = initialized_cfg.get("rescale_prenorm_residual", True)
@@ -467,7 +445,7 @@ class Caduceus(CaduceusPreTrainedModel):
 # ---------------------------------------------------------------------------
 
 class CaduceusForMaskedLM(CaduceusPreTrainedModel):
-    """Caduceus masked-LM head used during pre-training; weights loaded by PlantTrainer."""
+    """Masked-LM head used for pre-training; PlantTrainer loads these weights."""
 
     def __init__(self, config: CaduceusConfig, device=None, dtype=None, **kwargs):
         super().__init__(config, **kwargs)
@@ -490,7 +468,6 @@ class CaduceusForMaskedLM(CaduceusPreTrainedModel):
         self.post_init()
 
     def get_input_embeddings(self) -> nn.Module:
-        """Return the word embedding module."""
         return self.caduceus.backbone.embeddings.word_embeddings
 
     def set_input_embeddings(self, value: nn.Module) -> None:
@@ -511,14 +488,13 @@ class CaduceusForMaskedLM(CaduceusPreTrainedModel):
         self.lm_head = new_embeddings
 
     def tie_weights(self) -> None:
-        """Tie input and output embedding weights, accounting for RCPS."""
+        """Tie input/output embeddings (RCPS-aware)."""
         if self.config.rcps:
             self.lm_head.set_weight(self.get_input_embeddings().weight)
         else:
             super().tie_weights()
 
     def get_decoder(self) -> nn.Module:
-        """Return the backbone (decoder) module."""
         return self.caduceus
 
     def set_decoder(self, decoder: nn.Module) -> None:
@@ -616,7 +592,6 @@ class CaduceusForSequenceClassification(CaduceusPreTrainedModel):
         self.score.weight.data.normal_(std=initializer_range)
 
     def get_input_embeddings(self) -> nn.Module:
-        """Return the word embedding module."""
         return self.caduceus.backbone.embeddings.word_embeddings
 
     def set_input_embeddings(self, value: nn.Module) -> None:

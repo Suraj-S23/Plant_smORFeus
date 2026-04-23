@@ -1,11 +1,6 @@
-"""Configuration class for the Caduceus bidirectional Mamba backbone.
-
-This module defines CaduceusConfig, the Hugging Face PretrainedConfig subclass
-used throughout the Plant_smORFeus pipeline. It controls the model architecture
-(SSM dimension, layer count, bidirectionality, RCPS mode) as well as the
-frame-positional encoding policy and hidden-state cache settings consumed by
-the trainer.
-"""
+"""CaduceusConfig: HF PretrainedConfig subclass controlling architecture
+(SSM dim, depth, bidirectionality, RCPS), frame-positional encoding, and
+trainer-side hidden-state cache settings."""
 
 from typing import Dict, Optional
 
@@ -13,7 +8,7 @@ from transformers import PretrainedConfig
 
 
 class CaduceusConfig(PretrainedConfig):
-    """HuggingFace-compatible config for the Caduceus bidirectional Mamba backbone."""
+    """HF config for the Caduceus bidirectional Mamba backbone."""
 
     model_type = "caduceus"
 

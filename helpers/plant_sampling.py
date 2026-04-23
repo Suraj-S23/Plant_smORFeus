@@ -1,14 +1,6 @@
-"""Sequence-aware batch sampler for plant genome annotation.
-
-Provides SequenceAwareBatchSampler, a PyTorch BatchSampler that guarantees
-no two chunks from the same genomic sequence appear in the same batch. This
-property is required for the Mamba hidden-state caching scheme to remain
-valid: each sequence maintains its own SSM state across consecutive chunks.
-
-Classes exposed:
-    SequenceAwareBatchSampler -- BatchSampler that prevents same-sequence
-                                 collisions within a batch.
-"""
+"""BatchSampler that prevents two chunks from the same sequence sharing a
+batch — required so each sequence keeps its own Mamba SSM state across
+consecutive chunks."""
 
 import random
 from collections import deque
@@ -17,7 +9,7 @@ from torch.utils.data import BatchSampler, Subset, Sampler
 
 
 class SequenceAwareBatchSampler(BatchSampler):
-    """BatchSampler that prevents chunks from the same sequence sharing a batch."""
+    """No two chunks from the same sequence in one batch."""
 
     def __init__(
         self,
@@ -32,46 +24,45 @@ class SequenceAwareBatchSampler(BatchSampler):
     ):
         super().__init__(sampler, batch_size, drop_last)
 
-        self.dataset    = dataset
+        self.dataset = dataset
         self.batch_size = batch_size
-        self.drop_last  = drop_last
+        self.drop_last = drop_last
 
         base_seed = seed if seed is not None else random.randint(0, 2 ** 32 - 1)
         self.rng = random.Random(base_seed)
 
-        self.fixed_first_batch   = bool(fixed_first_batch)
+        self.fixed_first_batch = bool(fixed_first_batch)
         self._cached_first_batch = None
         self.max_active_sequences = (
             int(max_active_sequences) if max_active_sequences is not None else None
         )
 
-        # Map global -> local indices when dataset is a Subset
+        # global -> local index mapping for Subset
         if isinstance(dataset, Subset):
-            self.indices      = dataset.indices
+            self.indices = dataset.indices
             self.global2local = {g: i for i, g in enumerate(self.indices)}
-            full              = dataset.dataset
+            full = dataset.dataset
         else:
-            self.indices      = list(range(len(dataset)))
+            self.indices = list(range(len(dataset)))
             self.global2local = {i: i for i in self.indices}
-            full              = dataset
+            full = dataset
 
-        # Build per-sequence chunk queues from the underlying dataset
         self._base_sequence_queues: dict = {}
         for seq_id, chunks in full.sequence_map.items():
             q = deque(gidx for gidx, _ in chunks if gidx in self.global2local)
             if q:
                 self._base_sequence_queues[seq_id] = q
 
-        self.sequences       = list(self._base_sequence_queues.keys())
+        self.sequences = list(self._base_sequence_queues.keys())
         self.sequence_queues = None
         self._queues_shuffled = False
 
     def __iter__(self):
-        queues      = {s: deque(self._base_sequence_queues[s]) for s in self.sequences}
+        queues = {s: deque(self._base_sequence_queues[s]) for s in self.sequences}
         all_seq_ids = list(self.sequences)
-        wave_size   = self.max_active_sequences or len(all_seq_ids)
-        wave_start  = 0
-        active      = all_seq_ids[wave_start : wave_start + wave_size]
+        wave_size = self.max_active_sequences or len(all_seq_ids)
+        wave_start = 0
+        active = all_seq_ids[wave_start:wave_start + wave_size]
         first_batch_done = False
 
         if not self.fixed_first_batch:
@@ -80,7 +71,7 @@ class SequenceAwareBatchSampler(BatchSampler):
         if self.fixed_first_batch and self._cached_first_batch is None:
             batch = []
             for _ in range(min(self.batch_size, len(active))):
-                seq  = active.pop(0)
+                seq = active.pop(0)
                 gidx = queues[seq].popleft()
                 batch.append(self.global2local[gidx])
                 if queues[seq]:
@@ -110,7 +101,7 @@ class SequenceAwareBatchSampler(BatchSampler):
             else:
                 take = min(self.batch_size, len(active))
                 for _ in range(take):
-                    seq  = active.pop(0)
+                    seq = active.pop(0)
                     if not queues[seq]:
                         continue
                     gidx = queues[seq].popleft()
@@ -126,12 +117,12 @@ class SequenceAwareBatchSampler(BatchSampler):
                     wave_start += wave_size
                     if wave_start >= len(all_seq_ids):
                         break
-                    active = all_seq_ids[wave_start : wave_start + wave_size]
+                    active = all_seq_ids[wave_start:wave_start + wave_size]
                     self.rng.shuffle(active)
                 elif len(active) >= self.batch_size:
                     self.rng.shuffle(active)
 
     def __len__(self):
         total = sum(len(q) for q in self._base_sequence_queues.values())
-        n, r  = divmod(total, self.batch_size)
+        n, r = divmod(total, self.batch_size)
         return n if self.drop_last or r == 0 else n + 1

@@ -1,28 +1,8 @@
-"""Inference script for the smORFeus plant annotation model.
+"""Predict per-nucleotide annotations from a FASTA and write GFF3. If a
+reference GFF is passed, also writes per-label metric figures.
 
-Given a trained PlantTrainer checkpoint and a FASTA file, this module
-predicts per-nucleotide genomic annotations for each sequence and writes
-the results to GFF3 format. When a matching GFF3 annotation is also
-provided, per-label evaluation metrics are computed and saved.
-
-Two modes:
-    1. FASTA only: produces a GFF3 file of predictions, no metrics.
-    2. FASTA + GFF: additionally computes per-label metrics and saves
-                     evaluation figures (ROC, PR, overlay).
-
-Usage:
-    # Inference only
-    python plant_inference.py \\
-        --checkpoint checkpoints_runE/best.ckpt \\
-        --fasta     genome.fasta \\
-        --outdir    inference_out/
-
-    # With evaluation
-    python plant_inference.py \\
-        --checkpoint checkpoints_runE/best.ckpt \\
-        --fasta     genome.fasta \\
-        --gff       annotation.gff3 \\
-        --outdir    inference_out/
+  python plant_inference.py --checkpoint X --fasta Y --outdir Z
+  python plant_inference.py --checkpoint X --fasta Y --gff Z --outdir W
 """
 
 from __future__ import annotations
@@ -47,22 +27,22 @@ LABEL_NAMES = [
     "splice_acceptor",
 ]
 
-TOKEN_MAP  = {"A": 0, "T": 1, "C": 2, "G": 3, "N": 4}
-PAD_TOKEN  = 5
+TOKEN_MAP = {"A": 0, "T": 1, "C": 2, "G": 3, "N": 4}
+PAD_TOKEN = 5
 CHUNK_SIZE = 10_000
 
 # GFF3 feature types that map to each label
 GFF_FEATURE_MAP = {
     "protein_coding_gene": ["gene"],
-    "five_prime_UTR":      ["five_prime_UTR", "five_prime_utr"],
-    "three_prime_UTR":     ["three_prime_UTR", "three_prime_utr"],
-    "exon":                ["exon"],
+    "five_prime_UTR": ["five_prime_UTR", "five_prime_utr"],
+    "three_prime_UTR": ["three_prime_UTR", "three_prime_utr"],
+    "exon": ["exon"],
     # intron, splice_donor, splice_acceptor are derived from exon pairs
 }
 
 
 def tokenise(seq: str) -> np.ndarray:
-    """Convert a nucleotide string to int64 token array; unknowns map to PAD_TOKEN."""
+    """Nucleotide string → int64 tokens; unknowns → PAD_TOKEN."""
     return np.array([TOKEN_MAP.get(c, PAD_TOKEN) for c in seq.upper()],
                     dtype=np.int64)
 
@@ -89,7 +69,7 @@ def run_inference_on_sequence(
     use_cache: bool = True,
     threshold: float = 0.5,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Run chunk-by-chunk inference on a full chromosome, optionally with hidden-state caching."""
+    """Chunk-by-chunk inference over a chromosome, with optional hidden-state cache."""
     try:
         from mamba_ssm.utils.generation import InferenceParams
         _has_cache = True
@@ -99,18 +79,18 @@ def run_inference_on_sequence(
             print("[WARN] mamba_ssm not available. Running without hidden-state cache.")
 
     tokens = tokenise(seq)
-    L      = len(tokens)
-    probs  = np.zeros((L, len(LABEL_NAMES)), dtype=np.float32)
+    L = len(tokens)
+    probs = np.zeros((L, len(LABEL_NAMES)), dtype=np.float32)
 
     cache_params = None
 
     for chunk_idx, start in enumerate(range(0, L, chunk_size)):
-        end   = min(L, start + chunk_size)
+        end = min(L, start + chunk_size)
         chunk = tokens[start:end]
 
         x = torch.from_numpy(chunk).unsqueeze(0).long().to(device)  # [1, clen]
 
-        # Frame phase: chunk start position modulo 3, consistent with the collator
+        # Matches the collator: chunk-start position mod 3
         fp = torch.tensor([start % 3], dtype=torch.long, device=device)
 
         if use_cache and _has_cache:
@@ -124,12 +104,12 @@ def run_inference_on_sequence(
             cache_params = None
 
         with torch.no_grad():
-            out    = model.model(
-                input_ids    = x,
-                cache_params = cache_params,
-                frame_phase  = fp,
+            out = model.model(
+                input_ids=x,
+                cache_params=cache_params,
+                frame_phase=fp,
             )
-            logits = out.frame_logits          # [1, clen, 7]
+            logits = out.frame_logits  # [1, clen, 7]
             chunk_probs = torch.sigmoid(logits).squeeze(0).cpu().numpy()
 
         probs[start:end] = chunk_probs
@@ -139,11 +119,8 @@ def run_inference_on_sequence(
 
 
 def parse_gff_labels(gff_path: str, seq_id: str, seq_len: int) -> Optional[np.ndarray]:
-    """Build a (seq_len, 7) binary label array from a GFF3 file for one sequence.
-
-    Returns None if seq_id has no annotations or gffutils is not installed.
-    The gffutils DB is cached at gff_path + ".db".
-    """
+    """(seq_len, 7) uint8 labels for one seq_id, or None if absent/gffutils missing.
+    DB cached at gff_path + ".db"."""
     try:
         import gffutils
     except ImportError:
@@ -191,7 +168,7 @@ def parse_gff_labels(gff_path: str, seq_id: str, seq_len: int) -> Optional[np.nd
                 pass
         _fill(idx, intervals)
 
-    # Derive intron, splice_donor, and splice_acceptor from exon pairs per mRNA
+    # Introns + splice sites from per-mRNA exon pairs
     introns, donors, acceptors = [], [], []
     try:
         for tr in db.features_of_type("mRNA"):
@@ -204,9 +181,9 @@ def parse_gff_labels(gff_path: str, seq_id: str, seq_len: int) -> Optional[np.nd
             if len(exons) < 2:
                 continue
             for i in range(len(exons) - 1):
-                e1_end   = exons[i].end
+                e1_end = exons[i].end
                 e2_start = exons[i + 1].start - 1
-                strand   = exons[i].strand
+                strand = exons[i].strand
                 introns.append((e1_end, e2_start))
                 if strand == "+":
                     donors.append((e1_end, e1_end + 2))
@@ -229,7 +206,7 @@ def parse_gff_labels(gff_path: str, seq_id: str, seq_len: int) -> Optional[np.nd
 
 
 def compute_metrics(probs: np.ndarray, labels: np.ndarray) -> Dict:
-    """Per-label and macro metrics dict with keys: precision, recall, f1, accuracy, auroc, ap."""
+    """Per-label + macro: precision, recall, f1, accuracy, auroc, ap."""
     from sklearn.metrics import (
         f1_score, precision_score, recall_score,
         accuracy_score, roc_auc_score, average_precision_score,
@@ -243,11 +220,11 @@ def compute_metrics(probs: np.ndarray, labels: np.ndarray) -> Dict:
         pos = y.sum()
         results[name] = {
             "precision": precision_score(y, p, zero_division=0),
-            "recall":    recall_score(y, p, zero_division=0),
-            "f1":        f1_score(y, p, zero_division=0),
-            "accuracy":  accuracy_score(y, p),
-            "auroc":     roc_auc_score(y, prob) if pos > 0 and pos < len(y) else float("nan"),
-            "ap":        average_precision_score(y, prob) if pos > 0 else float("nan"),
+            "recall": recall_score(y, p, zero_division=0),
+            "f1": f1_score(y, p, zero_division=0),
+            "accuracy": accuracy_score(y, p),
+            "auroc": roc_auc_score(y, prob) if pos > 0 and pos < len(y) else float("nan"),
+            "ap": average_precision_score(y, prob) if pos > 0 else float("nan"),
         }
 
     results["macro"] = {}
@@ -293,19 +270,8 @@ def save_metrics_tsv(metrics: Dict, path: Path):
 
 def preds_to_gff3(preds: np.ndarray, seq_id: str, path: Path,
                   threshold: float = 0.5, source: str = "smORFeus"):
-    """Write binary predictions to a GFF3 file.
-
-    Each contiguous run of 1s for a given label becomes one GFF3 feature.
-    Features are sorted by start position, with label index as tiebreak.
-
-    Args:
-        preds: Uint8 array of shape (L, 7) with binary predictions.
-        seq_id: Sequence identifier for the GFF3 seqname column.
-        path: Destination file path.
-        threshold: Not used here (preds are already binary); retained for
-            interface compatibility.
-        source: Source field value in the GFF3 output.
-    """
+    """Write predictions as GFF3. Each run of 1s per label → one feature,
+    sorted by (start, label). `threshold` is ignored (preds already binary)."""
     def _runs(col):
         runs, s = [], None
         for i, v in enumerate(col):
@@ -320,12 +286,12 @@ def preds_to_gff3(preds: np.ndarray, seq_id: str, path: Path,
 
     gff_type = {
         "protein_coding_gene": "gene",
-        "five_prime_UTR":      "five_prime_UTR",
-        "three_prime_UTR":     "three_prime_UTR",
-        "exon":                "exon",
-        "intron":              "intron",
-        "splice_donor":        "splice_donor_site",
-        "splice_acceptor":     "splice_acceptor_site",
+        "five_prime_UTR": "five_prime_UTR",
+        "three_prime_UTR": "three_prime_UTR",
+        "exon": "exon",
+        "intron": "intron",
+        "splice_donor": "splice_donor_site",
+        "splice_acceptor": "splice_acceptor_site",
     }
 
     features = []
@@ -348,12 +314,12 @@ def preds_to_gff3(preds: np.ndarray, seq_id: str, path: Path,
 
 
 def save_eval_figures(
-    probs_list:  List[np.ndarray],
-    tgts_list:   List[np.ndarray],
+    probs_list: List[np.ndarray],
+    tgts_list: List[np.ndarray],
     overlay_examples: List[dict],
     outdir: Path,
 ):
-    """Generate ROC, PR, and overlay figures via plot_figures.py; fails gracefully if absent."""
+    """ROC/PR/overlay via plot_figures.py; no-op if unavailable."""
     try:
         import plot_figures as pf
         pf.OUT_DIR = outdir
@@ -377,25 +343,24 @@ def save_eval_figures(
 
 
 def main():
-    """Entry point for command-line inference."""
     parser = argparse.ArgumentParser(
         description="smORFeus plant genome inference and evaluation."
     )
-    parser.add_argument("--checkpoint",    required=True,
+    parser.add_argument("--checkpoint", required=True,
                         help="Path to PlantTrainer checkpoint (.ckpt)")
-    parser.add_argument("--fasta",         required=True,
+    parser.add_argument("--fasta", required=True,
                         help="Input FASTA file (one or more sequences)")
-    parser.add_argument("--gff",           default=None,
+    parser.add_argument("--gff", default=None,
                         help="Optional GFF3 annotation for evaluation")
-    parser.add_argument("--outdir",        default="inference_out",
+    parser.add_argument("--outdir", default="inference_out",
                         help="Output directory (default: inference_out/)")
-    parser.add_argument("--threshold",     type=float, default=0.5,
+    parser.add_argument("--threshold", type=float, default=0.5,
                         help="Prediction threshold (default: 0.5)")
-    parser.add_argument("--chunk_size",    type=int, default=CHUNK_SIZE,
+    parser.add_argument("--chunk_size", type=int, default=CHUNK_SIZE,
                         help=f"Chunk size in bp (default: {CHUNK_SIZE})")
-    parser.add_argument("--no_cache",      action="store_true",
+    parser.add_argument("--no_cache", action="store_true",
                         help="Disable hidden-state caching across chunks")
-    parser.add_argument("--max_overlays",  type=int, default=3,
+    parser.add_argument("--max_overlays", type=int, default=3,
                         help="Max annotation overlay figures to generate (default: 3)")
     args = parser.parse_args()
 
@@ -407,25 +372,25 @@ def main():
 
     model = load_model(args.checkpoint, device)
 
-    all_probs  = [[] for _ in LABEL_NAMES]
-    all_tgts   = [[] for _ in LABEL_NAMES]
-    overlays   = []
-    eval_mode  = args.gff is not None
+    all_probs = [[] for _ in LABEL_NAMES]
+    all_tgts = [[] for _ in LABEL_NAMES]
+    overlays = []
+    eval_mode = args.gff is not None
 
     records = list(SeqIO.parse(args.fasta, "fasta"))
     print(f"[INFO] Found {len(records)} sequence(s) in {args.fasta}")
 
     for rec in records:
         seq_id = rec.id
-        seq    = str(rec.seq).upper()
-        L      = len(seq)
+        seq = str(rec.seq).upper()
+        L = len(seq)
         print(f"\n[INFO] Processing {seq_id} ({L:,} bp)...")
 
         probs, preds = run_inference_on_sequence(
             model, seq, device,
-            chunk_size = args.chunk_size,
-            use_cache  = not args.no_cache,
-            threshold  = args.threshold,
+            chunk_size=args.chunk_size,
+            use_cache=not args.no_cache,
+            threshold=args.threshold,
         )
 
         gff_out = outdir / f"{seq_id}_predictions.gff3"
@@ -451,7 +416,7 @@ def main():
             if len(overlays) < args.max_overlays:
                 best_start, best_score = 0, 0
                 for start in range(0, L, args.chunk_size):
-                    end   = min(L, start + args.chunk_size)
+                    end = min(L, start + args.chunk_size)
                     score = int(labels[start:end].sum())
                     if score > best_score:
                         best_score, best_start = score, start
@@ -466,10 +431,10 @@ def main():
     if eval_mode and any(len(x) > 0 for x in all_probs):
         print("\n[INFO] Generating aggregate evaluation figures...")
         probs_cat = [np.concatenate(x) for x in all_probs]
-        tgts_cat  = [np.concatenate(x) for x in all_tgts]
+        tgts_cat = [np.concatenate(x) for x in all_tgts]
 
-        agg_probs   = np.stack(probs_cat, axis=1)
-        agg_labels  = np.stack(tgts_cat,  axis=1).astype(np.uint8)
+        agg_probs = np.stack(probs_cat, axis=1)
+        agg_labels = np.stack(tgts_cat, axis=1).astype(np.uint8)
         agg_metrics = compute_metrics(agg_probs, agg_labels)
         print("\n[INFO] Aggregate metrics across all sequences:")
         print_metrics(agg_metrics)

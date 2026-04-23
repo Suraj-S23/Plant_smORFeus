@@ -1,12 +1,5 @@
-"""PyTorch Lightning DataModule for plant genome annotation.
-
-Handles dataset loading, species-level train/val/test splitting, and
-DataLoader construction with SequenceAwareBatchSampler to preserve
-hidden-state cache validity across consecutive chunks.
-
-Classes exposed:
-    PlantDataModule -- LightningDataModule for the HDF5 plant annotation dataset.
-"""
+"""Lightning DataModule: species-level splits + SequenceAwareBatchSampler to
+keep hidden-state caches valid across consecutive chunks."""
 
 import json
 import os
@@ -24,9 +17,9 @@ from .plant_collator import PlantCollator
 
 
 class PlantDataModule(LightningDataModule):
-    """DataModule for plant genome annotation with species-level train/val/test splits.
+    """Species-level train/val/test splits.
 
-    Fixed split: Arabidopsis thaliana → test, Oryza sativa → val, rest → train.
+    Fixed: Arabidopsis thaliana → test, Oryza sativa → val, rest → train.
     """
 
     def __init__(
@@ -49,44 +42,43 @@ class PlantDataModule(LightningDataModule):
         length_bins: list = None,
     ):
         super().__init__()
-        self.data_path           = data_path
-        self.num_labels          = num_labels
-        self.batch_size          = batch_size
-        self.num_workers         = num_workers
-        self.chunk_size          = chunk_size
-        self.overlap             = overlap
-        self.rc_prob             = rc_prob
-        self.test_size           = test_size
-        self.val_size            = val_size
-        self.seed                = seed
+        self.data_path = data_path
+        self.num_labels = num_labels
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.chunk_size = chunk_size
+        self.overlap = overlap
+        self.rc_prob = rc_prob
+        self.test_size = test_size
+        self.val_size = val_size
+        self.seed = seed
         self.max_active_sequences = max_active_sequences
-        self.max_sequences       = max_sequences
-        self.skip_validation     = skip_validation
-        self.min_chunks_per_seq  = min_chunks_per_seq
-        self.organism_split      = organism_split
-        self.length_bins         = length_bins
+        self.max_sequences = max_sequences
+        self.skip_validation = skip_validation
+        self.min_chunks_per_seq = min_chunks_per_seq
+        self.organism_split = organism_split
+        self.length_bins = length_bins
 
         self.train_dataset = None
-        self.val_dataset   = None
-        self.test_dataset  = None
+        self.val_dataset = None
+        self.test_dataset = None
 
-    # Map assembly-level species IDs to true biological species.
-    # Multiple assemblies of the same organism must land in the same split
-    # to prevent data leakage.
+    # Assembly ID → biological species. Keeps all assemblies of one organism
+    # in the same split to prevent leakage.
     BIOLOGICAL_SPECIES = {
-        "ZEAMA":   "Zea_mays",
-        "MARPO":   "Marchantia_polymorpha",
-        "POPTR":   "Populus_trichocarpa",
-        "SOLTU":   "Solanum_tuberosum",
-        "AAGR":    "Amborella_trichopoda",      # covers AagrBONN, AagrOXF
-        "ARATH":   "Arabidopsis_thaliana",
+        "ZEAMA": "Zea_mays",
+        "MARPO": "Marchantia_polymorpha",
+        "POPTR": "Populus_trichocarpa",
+        "SOLTU": "Solanum_tuberosum",
+        "AAGR": "Amborella_trichopoda",  # covers AagrBONN, AagrOXF
+        "ARATH": "Arabidopsis_thaliana",
         "ORYSAJA": "Oryza_sativa",
-        "BRADI":   "Brachypodium_distachyon",
+        "BRADI": "Brachypodium_distachyon",
     }
 
     @classmethod
     def get_biological_species(cls, assembly_species_id: str) -> str:
-        """Map an assembly-level ID to a canonical biological species name."""
+        """Assembly ID → canonical species name."""
         for prefix, bio_name in cls.BIOLOGICAL_SPECIES.items():
             if assembly_species_id.upper().startswith(prefix):
                 return bio_name
@@ -94,8 +86,9 @@ class PlantDataModule(LightningDataModule):
 
     @staticmethod
     def get_species_id(seq_id: str) -> str:
-        """Extract the species prefix from a sequence ID by stripping the chromosome suffix."""
+        """Strip the chromosome suffix from a sequence ID."""
         import re
+
         chrom_pattern = re.compile(
             r"_(?:Chr|chr|CHR|scaffold|Scaffold|SCAFFOLD|contig|Contig|"
             r"CONTIG|LG|lg|\d)[A-Za-z0-9]*$"
@@ -120,18 +113,21 @@ class PlantDataModule(LightningDataModule):
             overlap=self.overlap,
             length_bins=self.length_bins,
         )
-        print(f"  Loaded in {time.time()-t0:.1f}s, contains "
-              f"{len(full)} chunks, {len(full.sequence_map)} sequences")
+        print(
+            f"  Loaded in {time.time() - t0:.1f}s, contains "
+            f"{len(full)} chunks, {len(full.sequence_map)} sequences"
+        )
 
-        # Filter by minimum chunk count and optional sequence cap
         valid_seq_ids = []
         for seq_id in sorted(full.sequence_map.keys()):
             if len(full.sequence_map[seq_id]) >= self.min_chunks_per_seq:
                 valid_seq_ids.append(seq_id)
             if self.max_sequences and len(valid_seq_ids) >= self.max_sequences:
                 break
-        print(f"  Using {len(valid_seq_ids)} sequences "
-              f"(>={self.min_chunks_per_seq} chunks each)")
+        print(
+            f"  Using {len(valid_seq_ids)} sequences "
+            f"(>={self.min_chunks_per_seq} chunks each)"
+        )
 
         valid_set = set(
             gidx
@@ -154,24 +150,26 @@ class PlantDataModule(LightningDataModule):
                 bio_to_assemblies[bio_name].append(assembly_id)
 
             all_species = sorted(bio_to_seqs.keys())
-            n_species   = len(all_species)
+            n_species = len(all_species)
             print(f"\n  Biological species split across {n_species} species:")
             for sp in all_species:
                 assemblies = bio_to_assemblies[sp]
-                print(f"    {sp}: {len(bio_to_seqs[sp])} sequences "
-                      f"(assemblies: {assemblies})")
+                print(
+                    f"    {sp}: {len(bio_to_seqs[sp])} sequences "
+                    f"(assemblies: {assemblies})"
+                )
 
-            # Fixed species assignment chosen to maximise training data while
-            # keeping the best-annotated genomes for evaluation.
-            FIXED_TEST  = {"Arabidopsis_thaliana"}
-            FIXED_VAL   = {"Oryza_sativa"}
+            # Best-annotated genomes reserved for eval; rest go to train.
+            FIXED_TEST = {"Arabidopsis_thaliana"}
+            FIXED_VAL = {"Oryza_sativa"}
 
-            test_species  = [s for s in all_species if s in FIXED_TEST]
-            val_species   = [s for s in all_species if s in FIXED_VAL]
-            train_species = [s for s in all_species
-                             if s not in FIXED_TEST and s not in FIXED_VAL]
+            test_species = [s for s in all_species if s in FIXED_TEST]
+            val_species = [s for s in all_species if s in FIXED_VAL]
+            train_species = [
+                s for s in all_species if s not in FIXED_TEST and s not in FIXED_VAL
+            ]
 
-            assigned   = set(test_species) | set(val_species) | set(train_species)
+            assigned = set(test_species) | set(val_species) | set(train_species)
             unassigned = set(all_species) - assigned
             if unassigned:
                 print(f"  [WARN] Unrecognised species assigned to train: {unassigned}")
@@ -192,20 +190,20 @@ class PlantDataModule(LightningDataModule):
                 return [s for sp in sp_list for s in bio_to_seqs[sp]]
 
             train_seq_ids = seqs_for(train_species)
-            val_seq_ids   = seqs_for(val_species)
-            test_seq_ids  = seqs_for(test_species)
+            val_seq_ids = seqs_for(val_species)
+            test_seq_ids = seqs_for(test_species)
 
         else:
             print("  Using sequence-level split (risk of species leakage!)")
             random.seed(self.seed)
             shuffled = valid_seq_ids.copy()
             random.shuffle(shuffled)
-            n_test  = max(1, int(len(shuffled) * self.test_size))
-            n_val   = max(1, int(len(shuffled) * self.val_size))
+            n_test = max(1, int(len(shuffled) * self.test_size))
+            n_val = max(1, int(len(shuffled) * self.val_size))
             n_train = len(shuffled) - n_test - n_val
             train_seq_ids = shuffled[:n_train]
-            val_seq_ids   = shuffled[n_train : n_train + n_val]
-            test_seq_ids  = shuffled[n_train + n_val :]
+            val_seq_ids = shuffled[n_train : n_train + n_val]
+            test_seq_ids = shuffled[n_train + n_val :]
 
         def get_ordered_indices(seq_ids):
             indices = []
@@ -217,22 +215,24 @@ class PlantDataModule(LightningDataModule):
             return indices
 
         train_idx = get_ordered_indices(train_seq_ids)
-        val_idx   = get_ordered_indices(val_seq_ids)
-        test_idx  = get_ordered_indices(test_seq_ids)
+        val_idx = get_ordered_indices(val_seq_ids)
+        test_idx = get_ordered_indices(test_seq_ids)
 
-        print(f"\n  Split in {time.time()-t_split:.1f}s")
+        print(f"\n  Split in {time.time() - t_split:.1f}s")
         total = len(train_idx) + len(val_idx) + len(test_idx)
-        print(f"  Train: {len(train_idx)} chunks  ({len(train_idx)/total*100:.1f}%)")
-        print(f"  Val:   {len(val_idx)} chunks  ({len(val_idx)/total*100:.1f}%)")
-        print(f"  Test:  {len(test_idx)} chunks  ({len(test_idx)/total*100:.1f}%)")
+        print(
+            f"  Train: {len(train_idx)} chunks  ({len(train_idx) / total * 100:.1f}%)"
+        )
+        print(f"  Val:   {len(val_idx)} chunks  ({len(val_idx) / total * 100:.1f}%)")
+        print(f"  Test:  {len(test_idx)} chunks  ({len(test_idx) / total * 100:.1f}%)")
 
         self.train_dataset = Subset(full, train_idx)
-        self.val_dataset   = Subset(full, val_idx)
-        self.test_dataset  = Subset(full, test_idx)
+        self.val_dataset = Subset(full, val_idx)
+        self.test_dataset = Subset(full, test_idx)
 
         self._analyze_cache_potential(full, train_idx, "Train")
-        self._analyze_cache_potential(full, val_idx,   "Val")
-        print(f"  Total setup time: {time.time()-t0:.1f}s")
+        self._analyze_cache_potential(full, val_idx, "Val")
+        print(f"  Total setup time: {time.time() - t0:.1f}s")
 
     def _make_collator(self, augment: bool = False) -> PlantCollator:
         return PlantCollator(
@@ -288,8 +288,8 @@ class PlantDataModule(LightningDataModule):
         metadata: dict = {"experiment_name": experiment_name, "splits": {}}
         for split_name, ds in [
             ("train", self.train_dataset),
-            ("val",   self.val_dataset),
-            ("test",  self.test_dataset),
+            ("val", self.val_dataset),
+            ("test", self.test_dataset),
         ]:
             if ds is None:
                 continue
@@ -300,9 +300,9 @@ class PlantDataModule(LightningDataModule):
                     seq_ids.add(seq_id)
             metadata["splits"][split_name] = {
                 "sequence_ids": sorted(seq_ids),
-                "species":      sorted({self.get_species_id(s) for s in seq_ids}),
+                "species": sorted({self.get_species_id(s) for s in seq_ids}),
                 "num_sequences": len(seq_ids),
-                "num_chunks":   len(ds),
+                "num_chunks": len(ds),
             }
 
         filepath = metadata_dir / f"{experiment_name}_plant_splits.json"
@@ -325,5 +325,7 @@ class PlantDataModule(LightningDataModule):
                 if prev_idx is not None and prev_idx in indices:
                     hits += 1
         if total:
-            print(f"  {split_name} cache potential: {hits/total:.1%} "
-                  f"({hits}/{total} chunks can reuse hidden states)")
+            print(
+                f"  {split_name} cache potential: {hits / total:.1%} "
+                f"({hits}/{total} chunks can reuse hidden states)"
+            )

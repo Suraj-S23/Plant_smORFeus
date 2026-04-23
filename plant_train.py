@@ -1,20 +1,11 @@
-"""Fine-tune a pretrained smORFeus checkpoint on plant genome annotation.
+"""Fine-tune smORFeus on 7-label plant genome annotation.
 
-Adapts the bidirectional Mamba backbone (pre-trained on bacterial ORF
-prediction) to predict 7 plant genomic features per nucleotide position:
+PlantTrainer (LightningModule) = CaduceusMixerModel backbone + a
+ConvSmoothingDecoder (or StandardDecoder) head.
 
-    protein_coding_gene, five_prime_UTR, three_prime_UTR,
-    exon, intron, splice_donor, splice_acceptor
-
-The training loop is implemented as a PyTorch Lightning LightningModule
-(PlantTrainer). The model consists of a CaduceusMixerModel backbone followed
-by a ConvSmoothingDecoder (or StandardDecoder) head.
-
-Usage
------
-  python plant_train.py                          # default config
-  python plant_train.py --preset dev             # quick smoke test
-  python plant_train.py --config my_config.yaml
+  python plant_train.py                    # default config
+  python plant_train.py --preset dev       # smoke test
+  python plant_train.py --config foo.yaml
 """
 from __future__ import annotations
 
@@ -76,11 +67,8 @@ class StandardDecoder(nn.Module):
 
 
 class ConvSmoothingDecoder(nn.Module):
-    """Per-label MLP heads with learnable Gaussian-smoothing post-processing.
-
-    Each label has its own MLP head and 1-D convolution smoother; raw and
-    smoothed outputs are combined with a learnable per-label weighted average.
-    """
+    """Per-label MLP + learnable 1-D Gaussian smoother. Raw and smoothed
+    streams are mixed with learned per-label weights."""
 
     def __init__(
         self,
@@ -113,8 +101,7 @@ class ConvSmoothingDecoder(nn.Module):
             for ks in self.kernel_sizes
         ])
 
-        # Per-label combination weights initialised so that narrow-kernel
-        # labels (splice sites) favour the raw predictions.
+        # Narrow-kernel labels (splice sites) favour raw predictions.
         raw_init = []
         smooth_init = []
         for ks in self.kernel_sizes:
@@ -200,7 +187,7 @@ class PlantAnnotationModel(nn.Module):
 # =============================================================================
 
 class PlantTrainer(LightningModule):
-    """PyTorch Lightning module for plant genome annotation fine-tuning."""
+    """Lightning module for plant annotation fine-tuning."""
 
     def __init__(self, config: PlantConfig):
         super().__init__()
@@ -248,11 +235,8 @@ class PlantTrainer(LightningModule):
 
     @classmethod
     def from_smorfeus_checkpoint(cls, config: PlantConfig) -> "PlantTrainer":
-        """Build a PlantTrainer and load backbone weights from a smORFeus checkpoint.
-
-        The old prediction head weights are discarded; the new 7-label plant
-        annotation head starts from random initialisation.
-        """
+        """Load only the backbone from a smORFeus checkpoint. The old head is
+        dropped; the new 7-label head starts random."""
         module = cls(config)
         ckpt_path = config.pretrained_checkpoint
         if not ckpt_path:
@@ -263,7 +247,6 @@ class PlantTrainer(LightningModule):
         raw = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         state = raw.get("state_dict", raw)
 
-        # Retain only backbone weights; drop the pre-training head
         backbone_state = {
             k.replace("model.backbone.", ""): v
             for k, v in state.items()
@@ -286,7 +269,7 @@ class PlantTrainer(LightningModule):
     def _update_label_statistics(
         self, targets: torch.Tensor, core_mask: torch.Tensor
     ) -> None:
-        """Update per-label EMA positive/negative counts from a batch."""
+        """EMA update of per-label pos/neg counts."""
         if not core_mask.any():
             return
         tgt_core = targets[core_mask].clamp_min(0)  # [N_valid, num_labels]
@@ -306,7 +289,7 @@ class PlantTrainer(LightningModule):
                 )
 
     def _get_dynamic_label_weights(self) -> List[Optional[torch.Tensor]]:
-        """Compute dynamic per-label pos/neg weights from EMA counts, or None list."""
+        """Per-label pos/neg weights from EMA counts, or [None, ...] if disabled."""
         if not self.config.use_dynamic_weights:
             return [None] * self.config.num_labels
         eps = 1e-6
@@ -325,7 +308,7 @@ class PlantTrainer(LightningModule):
     # -------------------------------------------------------------------------
 
     def _get_continuity_weight(self) -> float:
-        """Continuity loss weight for the current epoch; zero during warm-up."""
+        """Continuity weight for this epoch (0 during warm-up)."""
         if self.current_epoch < self.config.continuity_warmup_epochs:
             return 0.0
         ramp = min(
@@ -345,7 +328,7 @@ class PlantTrainer(LightningModule):
         targets: torch.Tensor,
         prefix: str,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Per-label BCE loss with static weights + warmed-up continuity penalty."""
+        """Per-label BCE + ramped continuity penalty."""
         core_mask = (targets != -100).all(dim=-1)  # [B, L]
         if not core_mask.any():
             return torch.zeros(1, device=logits.device, requires_grad=True), {}
@@ -401,7 +384,7 @@ class PlantTrainer(LightningModule):
         targets: torch.Tensor,
         core_mask: torch.Tensor,
     ) -> torch.Tensor:
-        """Mean smooth-L1 continuity penalty averaged across all labels."""
+        """Mean smooth-L1 continuity penalty across labels."""
         probs = torch.sigmoid(logits)
         tgt = targets.clamp_min(0.0)
         total_loss = 0.0
@@ -417,7 +400,7 @@ class PlantTrainer(LightningModule):
         tgt: torch.Tensor,
         core_mask: torch.Tensor,
     ) -> torch.Tensor:
-        """Smooth-L1 penalty on adjacent sigmoid-probability differences for one label."""
+        """Smooth-L1 on adjacent prob differences, one label."""
         p = probs * core_mask.float()
         t = tgt * core_mask.float()
         pd = torch.abs(p[:, 1:] - p[:, :-1])
@@ -437,7 +420,7 @@ class PlantTrainer(LightningModule):
         targets: torch.Tensor,
         prefix: str,
     ) -> None:
-        """Log per-label and aggregate accuracy / F1 metrics."""
+        """Log per-label + aggregate accuracy/F1."""
         core_mask = (targets != -100).all(dim=-1)
         if not core_mask.any():
             return
@@ -516,7 +499,7 @@ class PlantTrainer(LightningModule):
         return loss
 
     def test_step(self, batch: Dict, batch_idx: int) -> torch.Tensor:
-        """Accumulates TP/FP/FN counts across batches for final epoch-level F1."""
+        """Accumulates TP/FP/FN for epoch-level F1."""
         out = self.model(
             input_ids=batch["input_ids"],
             frame_phase=batch.get("frame_phase"),
@@ -539,7 +522,7 @@ class PlantTrainer(LightningModule):
         return loss
 
     def on_test_epoch_end(self) -> None:
-        """Log per-label precision, recall, and F1 from accumulated counts."""
+        """Finalise per-label precision/recall/F1 from accumulated TP/FP/FN."""
         eps = 1e-8
         for i, lname in enumerate(self.config.label_names):
             tp = self._test_tp[i].float()
@@ -560,7 +543,7 @@ class PlantTrainer(LightningModule):
     # -------------------------------------------------------------------------
 
     def on_train_epoch_start(self) -> None:
-        """Freeze or unfreeze the backbone according to the configured schedule."""
+        """Freeze/unfreeze backbone per freeze_backbone_epochs."""
         freeze_until = self.config.freeze_backbone_epochs
         if freeze_until > 0:
             if self.current_epoch < freeze_until:
@@ -574,15 +557,10 @@ class PlantTrainer(LightningModule):
                 print(f"[FREEZE] Backbone unfrozen at epoch {self.current_epoch}.")
 
     def on_train_epoch_end(self) -> None:
-        """End-of-epoch hook (no-op; hook present for future use)."""
         pass
 
     def on_before_optimizer_step(self, optimizer) -> None:
-        """Log the global gradient norm before each optimiser step.
-
-        Args:
-            optimizer: The current optimiser instance.
-        """
+        """Log the global grad norm."""
         total_norm = (
             sum(
                 p.grad.data.norm(2).item() ** 2
@@ -599,7 +577,7 @@ class PlantTrainer(LightningModule):
     # -------------------------------------------------------------------------
 
     def configure_optimizers(self):
-        """AdamW with two LR groups: decoder head at 2× backbone rate."""
+        """AdamW with decoder at 2× backbone LR."""
         backbone_params = list(self.model.backbone.parameters())
         decoder_params = list(self.model.decoder.parameters())
         param_groups = [
@@ -646,7 +624,7 @@ class PlantTrainer(LightningModule):
     # -------------------------------------------------------------------------
 
     def _load_hidden_state(self, batch: Dict) -> Optional[Any]:
-        """Build a batched InferenceParams from the LRU cache for this batch."""
+        """Assemble batched InferenceParams from the LRU cache."""
         requires = torch.as_tensor(
             batch.get("requires_hidden_state", [False]), dtype=torch.bool
         )
@@ -679,7 +657,7 @@ class PlantTrainer(LightningModule):
         return ip
 
     def _update_hidden_cache(self, batch: Dict, cache_params: Any) -> None:
-        """Store per-sample hidden states from this forward pass into the LRU cache."""
+        """Store per-sample hidden states into the LRU cache."""
         if cache_params is None or not cache_params.key_value_memory_dict:
             return
         B = int(batch["input_ids"].size(0))
@@ -709,7 +687,7 @@ class PlantTrainer(LightningModule):
 # =============================================================================
 
 def train(config: PlantConfig) -> str:
-    """Run the full training pipeline and return the best checkpoint path."""
+    """Run training; returns the best checkpoint path."""
     from plant_eval import PlantEvalCallback
 
     dm = PlantDataModule(
@@ -797,7 +775,6 @@ def train(config: PlantConfig) -> str:
 # =============================================================================
 
 def main() -> None:
-    """Parse command-line arguments and launch training."""
     parser = argparse.ArgumentParser(description="Plant genome annotation fine-tuning")
     parser.add_argument("--config", default=None, help="YAML config file")
     parser.add_argument("--preset", default="default", help="Config preset name")

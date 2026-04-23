@@ -1,33 +1,11 @@
-"""Batch driver for prepare_data.py across multiple plant species.
+"""Batch runner for prepare_data.py. Pairs FASTA and GFF files by stem —
+handles Galaxy-style 'Galaxy2-[name.fasta]' and skips ' (N)' duplicates.
 
-Auto-discovers FASTA/GFF pairs by matching biological names across two
-directories, handling Galaxy-style filenames like
-'Galaxy2-[AagrOXF_genome.fasta]'. Duplicate copies ending with ' (N)'
-are automatically skipped.
+Output → <dataset_root>/<species_stem>/output_labels/<seqid>.npz
 
-Output layout consumed by convert_plant_npz_to_hdf5.py:
-    <dataset_root>/
-        <species_stem>/
-            output_labels/
-                <seqid>.npz
-
-Usage:
-    python run_prepare_data.py \\
-        --dataset_root plant_processed_data_np \\
-        --fasta_dir    plant_data/fasta \\
-        --gff_dir      plant_data/gff
-
-    # Dry run (print commands, run nothing)
-    python run_prepare_data.py --dry_run \\
-        --dataset_root plant_processed_data_np \\
-        --fasta_dir    plant_data/fasta \\
-        --gff_dir      plant_data/gff
-
-    # Single species
-    python run_prepare_data.py --species AagrOXF_genome \\
-        --dataset_root plant_processed_data_np \\
-        --fasta_dir    plant_data/fasta \\
-        --gff_dir      plant_data/gff
+  python run_prepare_data.py --dataset_root DR --fasta_dir F --gff_dir G
+  python run_prepare_data.py --dry_run ...          # print commands only
+  python run_prepare_data.py --species AagrOXF_genome ...
 """
 
 import argparse
@@ -44,7 +22,7 @@ PREPARE_DATA_SCRIPT = os.path.join(_HERE, "prepare_data.py")
 
 # Recognised file extensions (case-insensitive)
 FASTA_EXTENSIONS = {".fasta", ".fa", ".fna", ".fasta.gz", ".fa.gz", ".fna.gz"}
-GFF_EXTENSIONS   = {".gff3", ".gff", ".gff3.gz", ".gff.gz"}
+GFF_EXTENSIONS = {".gff3", ".gff", ".gff3.gz", ".gff.gz"}
 
 # Biological suffixes to strip so FASTA and GFF stems can match automatically.
 # e.g. "ORYSAJA_Osativa_204_v7.0.softmasked" and
@@ -101,7 +79,7 @@ def get_stem(path: Path):
 def discover_pairs(fasta_dir: str, gff_dir: str) -> dict:
     """Match FASTA and GFF files by biological stem; warns about unmatched files."""
     fasta_dir = Path(fasta_dir)
-    gff_dir   = Path(gff_dir)
+    gff_dir = Path(gff_dir)
 
     fastas = {}
     for f in fasta_dir.iterdir():
@@ -115,8 +93,8 @@ def discover_pairs(fasta_dir: str, gff_dir: str) -> dict:
         if stem is not None:
             gffs[stem] = g
 
-    paired   = {}
-    only_fa  = []
+    paired = {}
+    only_fa = []
     only_gff = []
 
     for stem, fasta_path in sorted(fastas.items()):
@@ -131,7 +109,7 @@ def discover_pairs(fasta_dir: str, gff_dir: str) -> dict:
 
     for canonical, mapping in MANUAL_PAIRS.items():
         fasta_stem = mapping["fasta"]
-        gff_stem   = mapping["gff"]
+        gff_stem = mapping["gff"]
         if fasta_stem in fastas and gff_stem in gffs:
             paired[canonical] = {
                 "fasta": str(fastas[fasta_stem]),
@@ -196,7 +174,6 @@ def run_species(species: str, fasta: str, gff: str,
 
 
 def main():
-    """Entry point for batch label preparation."""
     parser = argparse.ArgumentParser(
         description="Batch prepare_data.py across multiple plant species."
     )
