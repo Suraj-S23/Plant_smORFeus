@@ -191,7 +191,6 @@ this repository.
   title        = {{Plant\_smORFeus}: Per-nucleotide plant genome annotation
                   by fine-tuning a bidirectional Mamba backbone},
   year         = {2025},
-  publisher    = {GitHub},
   howpublished = {\url{https://github.com/Suraj-S23/Plant_smORFeus}}
 }
 ```
