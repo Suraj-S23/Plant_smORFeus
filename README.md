@@ -125,19 +125,8 @@ python plant_inference.py \
 
 ## Checkpoints
 
-Pretrained and fine-tuned checkpoints are included in this
-repository because of their size. They are distributed separately and
-should be placed under `checkpoints/` before running evaluation or
-inference:
-
-```
-checkpoints/
-├── smorfeus_pretrained.ckpt   # pretrained backbone (for --checkpoint during training)
-└── best.ckpt                  # fine-tuned plant annotation checkpoint
-```
-
-All scripts accept an explicit `--checkpoint` path, so the checkpoints
-may also live elsewhere on disk.
+The checkpoint for plant-smORFeus has been included (.gitattributes)
+and will be included when cloning this repository.
 
 ## Data
 
@@ -194,7 +183,7 @@ Plant_smORFeus/
 
 ## Citation
 
-If you use this code, please cite the original Caduceus/smORFeus papers and
+If you use this code, please cite the original Caduceus, smORFeus and
 this repository.
 
 ## License
