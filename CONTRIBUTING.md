@@ -6,7 +6,7 @@ How to add new species, run experiments, and submit pull requests.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<your-org>/Plant_smORFeus.git
+git clone https://github.com/Suraj-S23/Plant_smORFeus.git
 cd Plant_smORFeus
 
 # 2. Create and activate the conda environment
@@ -117,9 +117,3 @@ python plant_inference.py \
    the genome source, annotation version, and how it was assigned to a split.
 6. Do not commit data files, checkpoints, or generated figures.
 
-## Code style
-
-- Follow the existing Google-style docstring conventions.
-- Replace `assert` statements with explicit `ValueError` or `RuntimeError`.
-- Keep all internal imports relative within `caduceus/` and `helpers/`.
-- Do not add `sys.path` manipulations.
