@@ -185,6 +185,14 @@ Plant_smORFeus/
 
 If you use this code, please cite the original Caduceus, smORFeus and
 this repository.
+@misc{plant_smorfeus2026,
+  author       = {Subramanian, Suraj},
+  title        = {{Plant\_smORFeus}: Per-nucleotide plant genome annotation
+                  by fine-tuning a bidirectional Mamba backbone},
+  year         = {2026},
+  publisher    = {GitHub},
+  howpublished = {\url{https://github.com/Suraj-S23/Plant_smORFeus}}
+}
 
 ## License
 
